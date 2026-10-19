@@ -1,0 +1,22 @@
+[
+ {
+  "grading_scale_name": "_Test Grading Scale",
+  "intervals": [
+      {
+         "grade_code": "A",
+         "minimum_percentage": 75,
+         "maximum_percentage": 100
+      },
+      {
+          "grade_code": "B",
+          "minimum_percentage": 50,
+          "maximum_percentage": 74
+      },
+      {
+          "grade_code": "C",
+          "minimum_percentage": 0,
+          "maximum_percentage": 49
+      }
+  ]
+ }
+]
