@@ -79,8 +79,8 @@ def check_attendance_records_exist(
 
 @frappe.whitelist()
 def mark_attendance(
-	students_present: str,
-	students_absent: str,
+	students_present,
+	students_absent,
 	subject_schedule: str | None = None,
 	student_batch: str | None = None,
 	date: str | None = None,
@@ -96,8 +96,15 @@ def mark_attendance(
 	if student_batch:
 		validate_attendance_date(student_batch, date)
 
-	present = json.loads(students_present)
-	absent = json.loads(students_absent)
+	if isinstance(students_present, str):
+		present = json.loads(students_present)
+	else:
+		present = students_present or []
+
+	if isinstance(students_absent, str):
+		absent = json.loads(students_absent)
+	else:
+		absent = students_absent or []
 
 	for d in present:
 		make_attendance_records(
@@ -148,25 +155,32 @@ def make_attendance_records(
 	:param subject_schedule: Subject Schedule.
 	:param status: Status (Present/Absent/Leave).
 	"""
-	student_attendance = frappe.get_doc(
-		{
-			"doctype": "Student Attendance",
-			"student": student,
-			"subject_schedule": subject_schedule,
-			"student_batch": student_batch,
-			"date": date,
-		}
-	)
-	if not student_attendance:
+	filters = {"student": student, "docstatus": ("!=", 2)}
+	if subject_schedule:
+		filters["subject_schedule"] = subject_schedule
+	else:
+		filters["student_batch"] = student_batch
+		filters["date"] = date
+
+	existing = frappe.db.get_value("Student Attendance", filters, "name")
+	if existing:
+		student_attendance = frappe.get_doc("Student Attendance", existing)
+		if student_attendance.docstatus == 0:
+			student_attendance.status = status
+			student_attendance.save()
+			student_attendance.submit()
+		elif student_attendance.docstatus == 1:
+			student_attendance.db_set("status", status)
+	else:
 		student_attendance = frappe.new_doc("Student Attendance")
-	student_attendance.student = student
-	student_attendance.student_name = student_name
-	student_attendance.subject_schedule = subject_schedule
-	student_attendance.student_batch = student_batch
-	student_attendance.date = date
-	student_attendance.status = status
-	student_attendance.save()
-	student_attendance.submit()
+		student_attendance.student = student
+		student_attendance.student_name = student_name
+		student_attendance.subject_schedule = subject_schedule
+		student_attendance.student_batch = student_batch
+		student_attendance.date = date
+		student_attendance.status = status
+		student_attendance.save()
+		student_attendance.submit()
 
 
 @frappe.whitelist()
@@ -280,7 +294,8 @@ def get_subject_schedule_events(start: str, end: str, filters: str | list | dict
 def get_assessment_students(assessment_plan: str, student_batch: str):
 	student_list = get_students_of_batch(student_batch)
 	for _i, student in enumerate(student_list):
-		result = get_result(student.student, assessment_plan)
+		student_id = student.get("student") if isinstance(student, dict) else getattr(student, "student", student)
+		result = get_result(student_id, assessment_plan)
 		if result:
 			student.update(
 				{
@@ -321,6 +336,7 @@ def get_result(student: str, assessment_plan: str):
 			"assessment_plan": assessment_plan,
 			"docstatus": ("!=", 2),
 		},
+		pluck="name",
 	)
 	if results:
 		return frappe.get_doc("Assessment Result", results[0])
@@ -376,8 +392,10 @@ def get_grade_details(grading_scale: str, percentage: float | str):
 
 
 @frappe.whitelist()
-def mark_assessment_result(assessment_plan: str, scores: str):
-	student_score = json.loads(scores)
+def mark_assessment_result(assessment_plan: str, scores):
+	if isinstance(scores, str):
+		scores = json.loads(scores)
+	student_score = scores
 	assessment_result = get_assessment_result_doc(student_score["student"], assessment_plan)
 	if not assessment_result:
 		return None
@@ -405,7 +423,8 @@ def submit_assessment_results(assessment_plan: str, student_batch: str):
 	total_result = 0
 	student_list = get_students_of_batch(student_batch)
 	for _i, student in enumerate(student_list):
-		doc = get_result(student.student, assessment_plan)
+		student_id = student.get("student") if isinstance(student, dict) else getattr(student, "student", student)
+		doc = get_result(student_id, assessment_plan)
 		if doc and doc.docstatus == 0:
 			total_result += 1
 			doc.submit()
@@ -420,6 +439,7 @@ def get_assessment_result_doc(student, assessment_plan):
 			"assessment_plan": assessment_plan,
 			"docstatus": ("!=", 2),
 		},
+		pluck="name",
 	)
 	if assessment_result:
 		doc = frappe.get_doc("Assessment Result", assessment_result[0])
@@ -429,7 +449,30 @@ def get_assessment_result_doc(student, assessment_plan):
 			frappe.msgprint(_("Result already Submitted"))
 			return None
 	else:
-		return frappe.new_doc("Assessment Result")
+		doc = frappe.new_doc("Assessment Result")
+		doc.student = student
+		doc.assessment_plan = assessment_plan
+		plan = frappe.db.get_value(
+			"Assessment Plan",
+			assessment_plan,
+			[
+				"student_batch",
+				"course",
+				"subject",
+				"assessment_group",
+				"academic_year",
+				"academic_term",
+			],
+			as_dict=True,
+		)
+		if plan:
+			doc.student_batch = plan.get("student_batch")
+			doc.course = plan.get("course")
+			doc.subject = plan.get("subject")
+			doc.assessment_group = plan.get("assessment_group")
+			doc.academic_year = plan.get("academic_year")
+			doc.academic_term = plan.get("academic_term")
+		return doc
 
 
 @frappe.whitelist()
@@ -478,11 +521,14 @@ def get_user_info():
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Authentication failed"), exc=frappe.AuthenticationError)
 
-	current_user = frappe.db.get_list(
+	users = frappe.db.get_list(
 		"User",
 		fields=["name", "email", "enabled", "user_image", "full_name", "user_type"],
 		filters={"name": frappe.session.user},
-	)[0]
+	)
+	if not users:
+		return None
+	current_user = users[0]
 	current_user["session_user"] = True
 	return current_user
 
@@ -491,13 +537,23 @@ def get_user_info():
 def get_student_info():
 	email = frappe.session.user
 	if email == "Administrator":
-		return
-	student_info = frappe.db.get_list(
+		return None
+
+	students = frappe.db.get_list(
 		"Student",
 		fields=["*"],
 		filters={"user": email},
-	)[0]
+	)
+	if not students:
+		students = frappe.db.get_list(
+			"Student",
+			fields=["*"],
+			filters={"student_email_id": email},
+		)
+	if not students:
+		return None
 
+	student_info = students[0]
 	current_program = get_current_enrollment(student_info.name)
 	if current_program:
 		student_info["student_batches"] = get_student_batches(
@@ -555,11 +611,27 @@ def get_course_list_based_on_program(program_name: str):
 @frappe.whitelist()
 def get_subject_schedule_for_student(
 	program_name: str,
-	student_batches: list | None = None,
-	student_groups: list | None = None,
+	student_batches: list | str | None = None,
+	student_groups: list | str | None = None,
 ):
-	student_batches = student_batches or student_groups or []
-	student_batches = [batch.get("label") for batch in student_batches]
+	raw_batches = student_batches or student_groups or []
+	if isinstance(raw_batches, str):
+		try:
+			raw_batches = json.loads(raw_batches)
+		except Exception:
+			raw_batches = [raw_batches]
+
+	batches = []
+	for b in raw_batches:
+		if isinstance(b, dict):
+			val = b.get("label") or b.get("name") or b.get("student_batch")
+			if val:
+				batches.append(val)
+		elif isinstance(b, str):
+			batches.append(b)
+
+	if not batches:
+		return []
 
 	schedule = frappe.db.get_list(
 		"Subject Schedule",
@@ -576,7 +648,7 @@ def get_subject_schedule_for_student(
 			"title",
 			"name",
 		],
-		filters={"program": program_name, "student_batch": ["in", student_batches]},
+		filters={"program": program_name, "student_batch": ["in", batches]},
 		order_by="schedule_date asc",
 	)
 	return schedule
@@ -749,8 +821,10 @@ def get_fees_print_format():
 
 
 def get_program_from_fee_schedule(fee_schedule):
-	program = frappe.db.get_value("Fee Schedule", filters={"name": fee_schedule}, fieldname=["program"])
-	return program
+	if not fee_schedule:
+		return None
+	return frappe.db.get_value("Fee Schedule", fee_schedule, "program")
+
 
 
 @frappe.whitelist()
