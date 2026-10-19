@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: `../${path.basename(path.resolve('..'))}/public/frontend`,
+    outDir: path.resolve(__dirname, '../education/public/frontend'),
     emptyOutDir: true,
     target: 'es2015',
     rollupOptions: {

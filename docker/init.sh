@@ -42,6 +42,7 @@ bench get-app erpnext
 echo "Copying local education app..."
 cp -r /workspace /home/frappe/frappe-bench/apps/education
 echo "education" >> /home/frappe/frappe-bench/apps/apps.txt
+./env/bin/pip install -e apps/education
 
 bench new-site education.localhost \
     --force \
