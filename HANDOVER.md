@@ -73,7 +73,13 @@ It is **NOT a standalone app**. It requires a full infrastructure stack to run.
 ### Also added:
 - `/leaves` route added to `frontend/src/router.js`
 - Leaves link added to `frontend/src/components/Sidebar.vue`
-- `docker/init.sh` updated to use local repo instead of pulling from GitHub
+- `docker/init.sh` updated to use local repo instead of pulling from GitHub and added `./env/bin/pip install -e apps/education`
+- `frontend/vite.config.js` fixed: `outDir` now explicitly targets `../education/public/frontend` instead of dynamic parent folder basename
+- `frontend/src/pages/Leaves.vue` fixed: corrected field name (`total_leave_days`), document status mapping (`docstatus`), and Student ID reference
+- `education/education/api.py` fixed: `apply_leave` now handles string JSON payloads and persists the `Student Leave Application` record in DB
+- Removed dead placeholder files: `frontend/src/components/Home.vue`, `frontend/src/pages/Home.vue`, `frontend/src/pages/SchoolDiary.vue`, and empty `doctype/program_course`
+- `pyproject.toml` updated: broadened frappe dependency to `>=15.0.0` to allow running on Frappe v15/v16/v17
+- Restored complete Frappe Education `README.md` documentation
 
 ---
 
