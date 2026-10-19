@@ -28,14 +28,14 @@
           <span class="font-medium text-gray-800">{{ leave.name }}</span>
           <Badge
             variant="subtle"
-            :theme="leaveStatusColor(leave.status)"
+            :theme="leaveStatusColor(leave.docstatus)"
             size="md"
-            :label="leave.status || 'Open'"
+            :label="leaveStatusLabel(leave.docstatus)"
           />
         </div>
         <div class="text-sm text-gray-600">
           {{ formatDate(leave.from_date) }} → {{ formatDate(leave.to_date) }}
-          <span class="ml-2 text-gray-400">({{ leave.total_days }} day{{ leave.total_days > 1 ? 's' : '' }})</span>
+          <span class="ml-2 text-gray-400">({{ leave.total_leave_days || 1 }} day{{ (leave.total_leave_days || 1) > 1 ? 's' : '' }})</span>
         </div>
         <div v-if="leave.reason" class="text-sm text-gray-500 italic">
           {{ leave.reason }}
@@ -94,7 +94,7 @@ const programName = getCurrentProgram().value?.program
 const showLeaveDialog = ref(false)
 
 const newLeave = reactive({
-  student: studentInfo.student_name || '',
+  student: studentInfo.name || '',
   student_name: studentInfo.student_name || '',
   from_date: '',
   to_date: '',
@@ -119,7 +119,7 @@ const leaveResource = createResource({
   url: 'frappe.client.get_list',
   params: {
     doctype: 'Student Leave Application',
-    fields: ['name', 'from_date', 'to_date', 'total_days', 'reason', 'status'],
+    fields: ['name', 'from_date', 'to_date', 'total_leave_days', 'reason', 'docstatus'],
     filters: { student: studentInfo.name },
     order_by: 'creation desc',
     limit: 50,
@@ -170,12 +170,15 @@ function formatDate(dateStr) {
   })
 }
 
-function leaveStatusColor(status) {
-  const map = {
-    Approved: 'green',
-    Rejected: 'red',
-    Open: 'orange',
-  }
-  return map[status] || 'gray'
+function leaveStatusLabel(docstatus) {
+  if (docstatus === 1) return 'Approved'
+  if (docstatus === 2) return 'Cancelled'
+  return 'Pending'
+}
+
+function leaveStatusColor(docstatus) {
+  if (docstatus === 1) return 'green'
+  if (docstatus === 2) return 'red'
+  return 'orange'
 }
 </script>

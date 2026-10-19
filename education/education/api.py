@@ -597,14 +597,33 @@ def get_course_schedule_for_student(
 
 
 @frappe.whitelist()
-def apply_leave(leave_data: dict, program_name: str):
+def apply_leave(leave_data, program_name: str = None):
+	if isinstance(leave_data, str):
+		import json
+		leave_data = json.loads(leave_data)
+
 	attendance_based_on_subject_schedule = frappe.db.get_single_value(
 		"Education Settings", "attendance_based_on_subject_schedule"
 	)
+
+	# Create Student Leave Application record
+	leave_doc = frappe.new_doc("Student Leave Application")
+	leave_doc.student = leave_data.get("student")
+	leave_doc.from_date = leave_data.get("from_date")
+	leave_doc.to_date = leave_data.get("to_date")
+	leave_doc.reason = leave_data.get("reason")
+	leave_doc.attendance_based_on = (
+		"Subject Schedule" if attendance_based_on_subject_schedule else "Student Batch"
+	)
+	leave_doc.insert(ignore_permissions=True)
+	leave_doc.submit()
+
 	if attendance_based_on_subject_schedule:
 		apply_leave_based_on_subject_schedule(leave_data, program_name)
 	else:
 		apply_leave_based_on_student_batch(leave_data, program_name)
+
+	return leave_doc.name
 
 
 def apply_leave_based_on_subject_schedule(leave_data, program_name):
